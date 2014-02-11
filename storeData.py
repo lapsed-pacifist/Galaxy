@@ -67,7 +67,7 @@ class Galaxy(object):
 		self.name = name
 		self.camera_list = []
 
-	def import_file(self, filename, camera_name):
+	def import_file(self, filename, camera_name=None):
 		h = extract_headers(filename)
 		T = asciitable.read(filename)
 		table = convert_ascii(T)
@@ -86,6 +86,8 @@ class Galaxy(object):
 			return self.camera_list[index]
 		else: raise ValueError('index must be a name (string) or an index (int)')
 
+	def __len__(self):
+		return len(self.camera_list)
 
 class Camera(object):
 	"""Contains Profiles and galaxy info"""
@@ -96,6 +98,9 @@ class Camera(object):
 		self.skylevel = skylevel
 		self.scale = scale
 		self.gal_name = gal_name
+
+	def __len__(self):
+		return len(self.profile_list)
 
 	def __getitem__(self, index):
 		if type(index) is str:
@@ -115,7 +120,7 @@ class Camera(object):
 
 class Profile(object):
 	"""Contains information for profile"""
-	def __init__(self, name, I, R, W, zeropoint, skylevel, scale, gal_name, cam_name):
+	def __init__(self, name, I, R, W, zeropoint, skylevel, scale, gal_name=None, cam_name=None):
 		"""stores data, converts I to counts per arcsec^2 and R to arcsec"""
 		self.name = name
 		self.skylevel = float(skylevel)
@@ -125,12 +130,16 @@ class Profile(object):
 		self.R = R * scale
 		self.W = W #assigned when importing ini files
 		self.M = self.zeropoint - (2.5*np.log10(self.I))
+		self.MW = None
 		self.params = lm.Parameters()
 		self.fits = {}
 		self.sky_fit = {}
 		self.confs ={}
 		self.gal_name = gal_name
 		self.cam_name = cam_name
+
+	def __len__(self):
+		return len(self.fits)
 		
 	def add_ini_params(self, file, names=None):
 		Config = cp.ConfigParser()
@@ -168,7 +177,10 @@ class Profile(object):
 		# for i,v in enumerate(self.MW[1]):
 		# 	if v < 0: print v, self.R[i]
 		# 	self.MW[1][i] = abs(self.MW[1][i])
-		ax.errorbar(self.R, self.M, yerr=self.MW, fmt='b.')
+		if self.MW:
+			ax.errorbar(self.R, self.M, yerr=self.MW, fmt='b.')
+		else: 
+			ax.plot(self.R, self.M,'b.')
 		ax.set_ylim([31,17])
 		ax.axhline(y=self.zeropoint - 2.5*np.log10(np.sqrt(self.sky_average)), linestyle='--')
 		ax2 = fig.add_subplot(212)
@@ -194,7 +206,7 @@ class Profile(object):
 		sky_av = np.mean(sky_I)
 		signal = (self.I + self.skylevel - sky_av)
 		noise = np.sqrt(signal + sky_av)
-		mini = np.sqrt(sky_av)
+		mini = sky_av
 		if np.isnan(mini):
 			warn("The error on averaged sky is below 0. Minimum weight is now tiny")
 			mini = 1e-05
