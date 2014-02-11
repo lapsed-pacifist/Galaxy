@@ -2,7 +2,7 @@
 1) fit exp and then sersic-exp with fixed exp
 """
 from scipy import stats
-from . import storeData
+import storeData as SD
 import numpy as np
 import matplotlib.pyplot as plt
 import lmfit as lm
@@ -232,8 +232,8 @@ def find_redchi(profile, fit_data):
 	return np.sum(((profile.I - total) / profile.W)**2.) / (fit_data.ndata)
 
 def durbin_watson(residuals):
-	i1 = residuals[1:]
-	return np.sum((i1 - residuals) ** 2.) / np.sum(residuals ** 2.)
+	i1 = np.array([residuals[i+1] - residuals[i] for i,v in enumerate(residuals[:-1])])
+	return np.sum((i1) ** 2.) / np.sum(residuals ** 2.)
 
 if __name__ == '__main__':
 	direct = 'C:\\Users\\User\\code\\Python\\Sersic_Plots'
