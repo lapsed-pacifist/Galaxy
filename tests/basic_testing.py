@@ -2,7 +2,7 @@
 1) fit exp and then sersic-exp with fixed exp
 """
 from scipy import stats
-from GalaxyFitting import storeData
+import storeData as SD
 import numpy as np
 import matplotlib.pyplot as plt
 import lmfit as lm
