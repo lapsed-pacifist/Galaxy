@@ -141,14 +141,32 @@ class Profile(object):
 	def __len__(self):
 		return len(self.fits)
 		
-	def add_ini_params(self, file, names=None):
-		Config = cp.ConfigParser()
-		Config.read(file)
-		d = {i:ConfigSectionMap(Config, i) for i in Config.sections()}
-		try:
-			comps = d['Components']
-		except KeyError:
-			raise IOError("Ini file not found for %s" % file)
+	def add_ini_params(self, File, names=None):
+		if os.path.isfile(File):
+			Config = cp.ConfigParser()
+			Config.read(File)
+			d = {i:ConfigSectionMap(Config, i) for i in Config.sections()}
+		else:
+			#raise IOError("Ini File not found for %s" % File)
+			print "Warning: ini file not found/blank for %s [creating a template]" % File
+			f = open(File, 'w')
+			Config = cp.ConfigParser()
+			Config.add_section('Components')
+			Config.set('Components','MeB',22)
+			Config.set('Components','ReB',1)
+			Config.set('Components','nB',4)
+			Config.set('Components','MeD',20)
+			Config.set('Components','ReD',8)
+			Config.set('Components','nD',1)
+			Config.add_section('Ranges')
+			Config.set('Ranges', 'fitrange', '[0,60]')
+			Config.set('Ranges', 'skyrange', '[35,60]')
+			Config.write(f)
+			f.close()
+			Config = cp.ConfigParser()
+			Config.read(File)
+			d = {i:ConfigSectionMap(Config, i) for i in Config.sections()}
+		comps = d['Components']
 		self.fit_range = string_to_list(d['Ranges']['fitrange'])
 		self.sky_range = string_to_list(d['Ranges']['skyrange'])
 		self.W, self.sky_average = self.weight_method(self.sky_range)
@@ -199,9 +217,11 @@ class Profile(object):
 		sky_R = [translate_x(self.R, i) for i in skyrange]
 		diff = sky_R[1] - sky_R[0]
 		if 0 > diff <= 2:
-			warn("Only %i points available for sky analysis. Increase sky range for better results" % diff)
+			warn("Only %i points available for sky analysis in %s. Increase sky range for better results" % (diff, self.cam_name+self.gal_name))
 		elif diff == 0:
-			raise ValueError("No points available for sky analysis. Increase sky range for better results")
+			warn("No points available for sky analysis in %s between %.1f and %.1f. Increase sky range for better results\n\
+				...max_R = %.1f [automatically adjusting range]" % (self.cam_name+self.gal_name, sky_R[0], sky_R[1], self.R[-1]))
+			sky_R = [-3, -1]
 		sky_I = self.I[sky_R[0]:sky_R[1]] + self.skylevel
 		sky_av = np.mean(sky_I)
 		signal = (self.I + self.skylevel - sky_av)
