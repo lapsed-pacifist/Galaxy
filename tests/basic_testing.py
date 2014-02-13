@@ -265,7 +265,6 @@ if __name__ == '__main__':
 	res = fig.add_subplot(gs[4:,:], sharex=ax)
 	ax.xaxis.set_visible(False)
 	resi = gal.M - convert_I(total, gal.zeropoint)
-	print durbin_watson(resi)
 	res.plot(gal.R, resi,  'b.')
 	res.set_ylim([-2,2])
 
