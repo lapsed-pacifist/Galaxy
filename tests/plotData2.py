@@ -25,6 +25,7 @@ from matplotlib import rc
 import basic_testing as bb
 import convert_to_deluxe as CD
 
+
 rc('font',**{'family':'serif','serif':['Times New Roman']})
 
 params={'axes.labelsize':15,'xtick.labelsize':15,'ytick.labelsize':15,'figure.figsize':(8,6)}

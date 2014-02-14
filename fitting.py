@@ -65,17 +65,17 @@ def res_func(parameters, model_func, x, z, data, weights=None, fit_range=None, c
 
 def fit_sersic_exp(profile, fit_range=None, store=False):
 	"""fits exp to middle then fixes and fits sersic-exp"""
-	mid_section = [20., profile.R[-1] - 10.]
+	mid_section = [profile.R[-1] - (0.75*profile.R[-1]), profile.R[-1]]
 
 	P = copy_params(profile.params)
 	fix_params(P, {'nB':None, 'MeB':None, 'ReB':None, 'nD':1.}) # fit exp
-	exp_fit = lm.minimize(res_func, P, args=(sersic2, profile.R, profile.zeropoint, profile.I, profile.W, mid_section, 'D'))
-
-	# P = copy_params(exp_fit.params, False)
-	# fix_params(P, {'nD':1., 'MeD':None, 'ReD': None}) # fit temp bulge
-	# se_fit = lm.minimize(res_func, P, args=(sersic2, profile.R, profile.zeropoint, profile.I, profile.W, None, 'T'))
+	exp_fit = lm.minimize(res_func, P, args=(sersic2, profile.R, profile.zeropoint, profile.I, 1., mid_section, 'D'))
 
 	P = copy_params(exp_fit.params, False)
+	fix_params(P, {'nD':1., 'MeD':None, 'ReD': None}) # fit temp bulge
+	se_fit = lm.minimize(res_func, P, args=(sersic2, profile.R, profile.zeropoint, profile.I, profile.W, None, 'T'))
+
+	P = copy_params(se_fit.params, False)
 	fix_params(P, {'nD':1.})
 	free_fit = lm.minimize(res_func, P, args=(sersic2, profile.R, profile.zeropoint, profile.I, profile.W, None, 'T'))
 
@@ -85,37 +85,58 @@ def fit_sersic_exp(profile, fit_range=None, store=False):
 
 def find_redchi(profile, fit_data):
 	total = sersic2(fit_data.params, profile.R, profile.zeropoint, 'T')
-	return np.sum(((profile.I - total) / profile.W)**2.) / (fit_data.ndata)
+	return np.sum(((profile.I - total) / profile.W)**2.) / (fit_data.ndata - 5.)
+
+def sky_error(profile, sky_adj, fit_name, store=True):
+	"""
+	Adjusts the sky and generates fit for variables from the adjustment. 
+	"""
+	out = profile.fits[fit_name][0].params
+	profile.I += 1.*sky_adj
+	out_up = fit_sersic_exp(profile, fit_range=profile.fits[fit_name][1], store=False).params
+	profile.I -= 2.*sky_adj
+	out_down = fit_sersic_exp(profile, fit_range=profile.fits[fit_name][1], store=False).params
+	profile.I += 1.*sky_adj
+
+	sky = {}
+	for key, val in out.iteritems():
+		sky[key] = [out_up[key] - val, val - out_down[key]]
+	if store:
+		profile.sky_fit.update(sky)
+	return sky
 
 if __name__ == '__main__':
 	direct = 'repository'
 	Gal_list, Gal_names = SD.import_directory(direct)
-	G = Gal_list[0][0][1]
-	plt.errorbar(G.R, G.I, G.W, 'b.')
-	# P = G.params
-	# X = np.linspace(0,60,1000)
-	# out = fit_sersic_exp(G, store=True)
-	# print find_redchi(G, out)
-	# print out.redchi
-	# lm.report_fit(out.params, show_correl=False)
+	G = Gal_list[25][0][1]
 
-	# fig = plt.figure()
-	# gs = gridspec.GridSpec(6,6)
-	# ax = fig.add_subplot(gs[0:4,0:]) # main plot
-	# ax.errorbar(G.R, G.M, yerr=G.MW, fmt='b.')
-	# mod_R = np.linspace(0, G.R[-1], 500)
-	# total, bulge, disc = sersic2(out.params, mod_R, G.zeropoint, 'TBD')
-	# ax.plot(mod_R, convert_I(total, G.zeropoint), 'k-')
-	# ax.plot(mod_R, convert_I(bulge, G.zeropoint), 'g:', linewidth=2.)
-	# ax.plot(mod_R, convert_I(disc, G.zeropoint), 'r--', linewidth=2.)
-	# ax.set_ylim([35,15])
-	# ax.set_title(G.gal_name+G.cam_name+G.name)
+	P = G.params
+	X = np.linspace(0,60,1000)
+	out = fit_sersic_exp(G, store=True, fit_range=[3., G.R[-1]])
+	print out.redchi
+	lm.report_fit(out.params, show_correl=False)
 
-	# total = sersic2(out.params, G.R, G.zeropoint, 'T')
-	# res = fig.add_subplot(gs[4:,:], sharex=ax)
-	# ax.xaxis.set_visible(False)
-	# resi = G.M - convert_I(total, G.zeropoint)
-	# res.plot(G.R, resi,  'b.')
-	# res.axhline(y=0, linestyle='--')
-	# res.set_ylim([-2,2])
+	fig = plt.figure()
+	gs = gridspec.GridSpec(6,6)
+	ax = fig.add_subplot(gs[0:4,0:]) # main plot
+	ax.errorbar(G.R, G.M, yerr=G.MW, fmt='b.')
+	mod_R = np.linspace(0, G.R[-1], 500)
+	total, bulge, disc = sersic2(out.params, mod_R, G.zeropoint, 'TBD')
+	ax.plot(mod_R, convert_I(total, G.zeropoint), 'k-')
+	ax.plot(mod_R, convert_I(bulge, G.zeropoint), 'g:', linewidth=2.)
+	ax.plot(mod_R, convert_I(disc, G.zeropoint), 'r--', linewidth=2.)
+	ax.set_ylim([35,15])
+	ax.set_title(G.gal_name+G.cam_name+G.name)
+
+	total = sersic2(out.params, G.R, G.zeropoint, 'T')
+	res = fig.add_subplot(gs[4:,:], sharex=ax)
+	ax.xaxis.set_visible(False)
+	resi = G.M - convert_I(total, G.zeropoint)
+	res.plot(G.R, resi,  'b.')
+	res.axhline(y=0, linestyle='--')
+	res.set_ylim([-2,2])
+
+	fig = plt.figure()
+	ax = fig.add_subplot(111)
+	ax.plot(G.R[-20:len(G.R)], G.I[-20:len(G.R)])
 	plt.show()

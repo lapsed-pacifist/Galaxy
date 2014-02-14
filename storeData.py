@@ -8,6 +8,7 @@ import bisect
 import lmfit as lm
 import os
 import fnmatch
+import findSky 
 
 
 def translate_x(x, point, dupl_pos=-1, round_method='right'):
@@ -175,6 +176,9 @@ class Profile(object):
 			names = ['MeB', 'ReB', 'nB', 'MeD', 'ReD', 'nD']
 		for n in names:
 			self.params.add(n, value=float(comps[n.lower()]), min=0.01)
+		self.params['MeB'].max, self.params['MeD'].max = 40., 40.
+		self.params['nB'].max = 8.
+
 				
 	def convert_errors(self):
 		up = self.W + self.I
@@ -213,20 +217,28 @@ class Profile(object):
 	def weight_method(self, skyrange):
 		"""calculates weighting by SNR based on sky in skyrange (in arcsec)
 		There is a minimum weighting of sqrt(sky level)"""
+		if self.cam_name is 'sdss':
+			t, G = 54., 7.43
+		elif self.cam_name is 'mega':
+			t, G = 35., 1.7
+		else: t, G = 1.,1.
 
+		# loc = findSky.iterate(self.I, self.R)
+		# skyrange = [int(loc[0]), self.fit_range[1]]
 		sky_R = [translate_x(self.R, i) for i in skyrange]
+
 		diff = sky_R[1] - sky_R[0]
-		if 0 > diff <= 2:
-			warn("Only %i points available for sky analysis in %s. Increase sky range for better results" % (diff, self.cam_name+self.gal_name))
-		elif diff == 0:
-			warn("No points available for sky analysis in %s between %.1f and %.1f. Increase sky range for better results\n\
-				...max_R = %.1f [automatically adjusting range]" % (self.cam_name+self.gal_name, sky_R[0], sky_R[1], self.R[-1]))
+		# if 0 > diff <= 2:
+		# 	warn("Only %i points available for sky analysis in %s. Increase sky range for better results" % (diff, self.cam_name+self.gal_name))
+		if diff == 0:
+			# warn("No points available for sky analysis in %s between %.1f and %.1f. Increase sky range for better results\n\
+			# 	...max_R = %.1f [automatically adjusting range]" % (self.cam_name+self.gal_name, skyrange[0], skyrange[1], self.R[-1]))
 			sky_R = [-3, -1]
 		sky_I = self.I[sky_R[0]:sky_R[1]] + self.skylevel
 		sky_av = np.mean(sky_I)
-		signal = (self.I + self.skylevel - sky_av)
-		noise = np.sqrt(signal + sky_av)
-		mini = sky_av
+		signal = (self.I + self.skylevel - sky_av) * t * G
+		noise = np.sqrt(signal + (np.std(sky_I * t * G)**2.) + (self.skylevel * t * G))
+		mini = np.sqrt(sky_av * t * G)
 		if np.isnan(mini):
 			warn("The error on averaged sky is below 0. Minimum weight is now tiny")
 			mini = 1e-05
@@ -234,7 +246,8 @@ class Profile(object):
 		for i, val in enumerate(Weighting):
 			if (val < mini) or np.isnan(val):
 				Weighting[i] = mini
-		return Weighting, sky_av
+		self.sky_var = np.std(sky_I)
+		return Weighting / (t * G), sky_av / (t * G)
 
 def import_directory(directory, names=None):
 	files = [f.split('_') for f in os.listdir(directory) if fnmatch.fnmatch(f, '*.ascii')] #cam_number_cts.ascii

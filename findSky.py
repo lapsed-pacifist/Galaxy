@@ -27,9 +27,6 @@ def iterate(I, R):
 	cs = np.array(cs)
 	ms = np.array(ms)
 	ans = np.min(np.abs(ms))
-	print cs[abs(ms) == ans]
-	print cs
-	print ms
 	return  R[0:-3][abs(ms[::-1]) == ans]
 
 
