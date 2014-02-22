@@ -71,11 +71,11 @@ class Galaxy(object):
 	def import_file(self, filename, camera_name=None):
 		h = extract_headers(filename)
 		T = asciitable.read(filename)
+		self.ID = h['ID']
 		table = convert_ascii(T)
-		cam = Camera(camera_name, float(h['zp']), float(h['sky']), float(h['scale']), self.name) #create a camera from headers
+		cam = Camera(camera_name, float(h['zp']), float(h['sky']), float(h['scale']), self.ID) #create a camera from headers
 		cam.add_data_table(table) #call add_table_data in camera
 		self.camera_list.append(cam)
-		self.ID = h['ID']
 		# print re.search(re.escape('\\') + "(.*?)" + re.escape(self.ID), filename).group(1).split()
 		# print re.match('.*?(\w+)(?<=.{%d})' % (0), filename).group(0)
 
@@ -170,7 +170,7 @@ class Profile(object):
 		comps = d['Components']
 		self.fit_range = string_to_list(d['Ranges']['fitrange'])
 		self.sky_range = string_to_list(d['Ranges']['skyrange'])
-		self.W, self.sky_average = self.weight_method(self.sky_range)
+		self.W, self.sky_average, self.sky_cutoff = self.weight_method(self.sky_range)
 		self.convert_errors()
 		if names is None:
 			names = ['MeB', 'ReB', 'nB', 'MeD', 'ReD', 'nD']
@@ -192,10 +192,11 @@ class Profile(object):
 			if self.MW[0][i] < mini: self.MW[0][i] = mini
 			if self.MW[1][i] < mini: self.MW[1][i] = mini
 
-	def preview(self):
-		fig = plt.figure()
-		fig.set_facecolor('white')
-		ax = fig.add_subplot(211)
+	def preview(self, ax=None):
+		if ax is None:
+			fig = plt.figure()
+			fig.set_facecolor('white')
+			ax = fig.add_subplot(211)
 		# for i,v in enumerate(self.MW[1]):
 		# 	if v < 0: print v, self.R[i]
 		# 	self.MW[1][i] = abs(self.MW[1][i])
@@ -207,12 +208,16 @@ class Profile(object):
 		ax.axhline(y=self.zeropoint - 2.5*np.log10(np.sqrt(self.sky_average)), linestyle='--')
 		ax2 = fig.add_subplot(212)
 		sky_ind = [translate_x(self.R, point) for point in self.sky_range]
-		ax2.plot(self.R[sky_ind[0]:sky_ind[1]], self.I[sky_ind[0]:sky_ind[1]], 'b.')
+		ax2.plot(self.R, self.I, 'b.')
 		ax2.axhline(y=0, linestyle='--')
 		ax2.axhline(y=np.sqrt(self.sky_average), linestyle=':')
+		ax2.set_ylim([-10,10])
 		ax.set_title(self.gal_name+self.cam_name+self.name)
+		ax.axvline(x=self.R[self.sky_cutoff])
+		ax2.axvline(x=self.R[self.sky_cutoff])
 		# ax.set_xscale('log')
-		plt.show()
+		# plt.show()
+		return ax
 
 	def weight_method(self, skyrange):
 		"""calculates weighting by SNR based on sky in skyrange (in arcsec)
@@ -225,19 +230,25 @@ class Profile(object):
 
 		# loc = findSky.iterate(self.I, self.R)
 		# skyrange = [int(loc[0]), self.fit_range[1]]
-		sky_R = [translate_x(self.R, i) for i in skyrange]
+		# sky_R = [translate_x(self.R, i) for i in skyrange]
 
-		diff = sky_R[1] - sky_R[0]
-		# if 0 > diff <= 2:
-		# 	warn("Only %i points available for sky analysis in %s. Increase sky range for better results" % (diff, self.cam_name+self.gal_name))
-		if diff == 0:
-			# warn("No points available for sky analysis in %s between %.1f and %.1f. Increase sky range for better results\n\
-			# 	...max_R = %.1f [automatically adjusting range]" % (self.cam_name+self.gal_name, skyrange[0], skyrange[1], self.R[-1]))
-			sky_R = [-3, -1]
-		sky_I = self.I[sky_R[0]:sky_R[1]] + self.skylevel
-		sky_av = np.mean(sky_I)
+		# diff = sky_R[1] - sky_R[0]
+		# # if 0 > diff <= 2:
+		# # 	warn("Only %i points available for sky analysis in %s. Increase sky range for better results" % (diff, self.cam_name+self.gal_name))
+		# if diff == 0:
+		# 	# warn("No points available for sky analysis in %s between %.1f and %.1f. Increase sky range for better results\n\
+		# 	# 	...max_R = %.1f [automatically adjusting range]" % (self.cam_name+self.gal_name, skyrange[0], skyrange[1], self.R[-1]))
+		# 	sky_R = [-3, -1]
+		# stds = np.array([np.std(self.I[::-1][:i+4]) for i, r in enumerate(self.R[-4::-1])])
+		# try:
+		# 	cut_point = np.arange(len(self.R))[stds[::-1]<10][4]
+		# except IndexError:
+		# 	cut_point = len(self.R) - 4
+		cut_point = np.arange(len(self.R))[self.R > self.R[-1]*0.75][0]-1
+		sky_I = self.I[cut_point:self.fit_range[1]] + self.skylevel
+		sky_av = np.median(sky_I)
 		signal = (self.I + self.skylevel - sky_av) * t * G
-		noise = np.sqrt(signal + (np.std(sky_I * t * G)**2.) + (self.skylevel * t * G))
+		noise = np.sqrt(signal + (np.std(sky_I * t * G)**2.))# + (self.skylevel * t * G))
 		mini = np.sqrt(sky_av * t * G)
 		if np.isnan(mini):
 			warn("The error on averaged sky is below 0. Minimum weight is now tiny")
@@ -247,7 +258,7 @@ class Profile(object):
 			if (val < mini) or np.isnan(val):
 				Weighting[i] = mini
 		self.sky_var = np.std(sky_I)
-		return Weighting / (t * G), sky_av / (t * G)
+		return Weighting, sky_av, cut_point
 
 def import_directory(directory, names=None):
 	files = [f.split('_') for f in os.listdir(directory) if fnmatch.fnmatch(f, '*.ascii')] #cam_number_cts.ascii
@@ -262,6 +273,7 @@ def import_directory(directory, names=None):
 			Gal[f[0]][1].add_ini_params(directory+'\\'+ini_name, names)
 			galaxies.append(Gal)
 			name_list.append(f[1])
+			assert name_list[-1] == galaxies[-1][0][0].gal_name
 		else:
 			i = name_list.index(f[1])
 			galaxies[i].import_file(directory+'\\'+'_'.join(f), f[0])
@@ -269,14 +281,12 @@ def import_directory(directory, names=None):
 			galaxies[i][f[0]][0].add_ini_params(directory+'\\'+ini_name, names)
 			galaxies[i][f[0]][1].add_ini_params(directory+'\\'+ini_name, names)
 	return galaxies, name_list
+
 			
 if __name__ == '__main__':
-	direct = 'C:\\Users\\User\\code\\Python\\Sersic_Plots'
+	direct = r'C:\Users\User\Documents\Project work\GalaxyFitting\repository'
 	gal_list, gal_names = import_directory(direct)
-	# for i,v in enumerate(gal_list[0][0][0].MW[1]):
-	# 	if v < 0: print v, gal_list[0][0][0].R[i]
-	
-	for gal in gal_list:
-		for cam in gal:
-			for prof in cam:
-				prof.preview()
+	target = gal_list[34][0][0]
+	target.preview()
+	print target.sky_cutoff
+	plt.show()

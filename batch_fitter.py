@@ -1,42 +1,32 @@
 import storeData as SD
-import plotData as plt
 import fitting as F
 import sys
-from matplotlib.backends.backend_pdf import PdfPages
-import shutil
+import numpy as np
+import csv
 
 direct = 'repository'
 Gal_list, Gal_names = SD.import_directory(direct)
 T = len(Gal_list) * 4
 cumul = 0
+pars = ['MeB', 'ReB', 'nB', 'MeD', 'ReD']
+results = np.zeros([T/4, 4, len(pars)+1])
+std_errs = np.zeros([T/4, 4, len(pars)])
 
-figures = []
-for G in Gal_list:
-	for C in G:
-		for P in C:
-			sys.stdout.write('\r')
-			sys.stdout.write("[%-20s] %.1f%%" % ('='*int(20*cumul/T), (100*cumul/T)))
-			sys.stdout.write(" name: %s" % C.gal_name+C.name+P.name)
-			sys.stdout.flush()
-			F.fit_sersic_exp(P, store=True, fit_range=[3., P.R[-1]])
-			F.sky_error(P, P.sky_var, 'sersic+exp')
+for i, G in enumerate(Gal_list):
+	gal_n = -1
+	for j, C in enumerate(G):
+		for k, P in enumerate(C):
 			cumul += 1
-		try:
-			fig = plt.graph_camera(C, 'sersic+exp')
-			fig.set_size_inches(18.5,10.5)
-			fig.savefig('repository/graphs/'+C.gal_name+'_'+C.name+P.name+'.png', dpi=300, orientation='landscape', papertype='a4', pad_inches=0.)
-		except ValueError:
-			shutil.move('repository/'+P.cam_name+'_'+P.gal_name+'_cts.ascii', 'repository/bad')
-			shutil.move('repository/'+P.cam_name+'_'+P.gal_name+'.ini', 'repository/bad')
-			sys.stdout.write(' bad one moved :(')
-		except IndexError:
-			shutil.move('repository/'+P.cam_name+'_'+P.gal_name+'_cts.ascii', 'repository/bad')
-			shutil.move('repository/'+P.cam_name+'_'+P.gal_name+'.ini', 'repository/bad')
-			sys.stdout.write(' bad one moved :(')
+			gal_n += 1
+			ans = F.fit_sersic_exp(P, store=True, fit_range=[2., P.R[-1]])
+			parameters = [ans.params[a].value for a in pars]
+			parameters.append(ans.redchi)
+			errs = [ans.params[a].stderr for a in pars]
+			results[i, gal_n, :], std_errs[i, gal_n, :] = np.array(parameters), np.array(errs)
+			sys.stdout.write('\r')
+			sys.stdout.write("[%-20s] %.1f%% (evals=%-4i)" % ('='*int(20*cumul/T), (100*cumul/T), ans.nfev))
+			sys.stdout.flush()
 
-
-# pdf_pages = PdfPages('my-fancy-document.pdf')
-# for i in figures:
-# 	pdf_pages.savefig(i)
-# pdf_pages.close()
-
+with open('fit_parameters.csv', 'wb') as f:
+	writer = csv.writer(f)
+	writer.writerow()

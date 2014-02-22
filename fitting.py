@@ -8,6 +8,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 import lmfit as lm
 import matplotlib.gridspec as gridspec
+from scipy import interpolate
+import pickle
 
 def copy_params(parameters, trans_vary=True):
 	new = lm.Parameters()
@@ -63,19 +65,17 @@ def res_func(parameters, model_func, x, z, data, weights=None, fit_range=None, c
 		return res
 
 
-def fit_sersic_exp(profile, fit_range=None, store=False):
+def fit_sersic_exp(profile, fit_range=None, store=False, params=None):
 	"""fits exp to middle then fixes and fits sersic-exp"""
 	mid_section = [profile.R[-1] - (0.75*profile.R[-1]), profile.R[-1]]
-
-	P = copy_params(profile.params)
+	if params is None:
+		P = copy_params(profile.params)
+	else:
+		P = copy_params(params)
 	fix_params(P, {'nB':None, 'MeB':None, 'ReB':None, 'nD':1.}) # fit exp
 	exp_fit = lm.minimize(res_func, P, args=(sersic2, profile.R, profile.zeropoint, profile.I, 1., mid_section, 'D'))
 
 	P = copy_params(exp_fit.params, False)
-	fix_params(P, {'nD':1., 'MeD':None, 'ReD': None}) # fit temp bulge
-	se_fit = lm.minimize(res_func, P, args=(sersic2, profile.R, profile.zeropoint, profile.I, profile.W, None, 'T'))
-
-	P = copy_params(se_fit.params, False)
 	fix_params(P, {'nD':1.})
 	free_fit = lm.minimize(res_func, P, args=(sersic2, profile.R, profile.zeropoint, profile.I, profile.W, None, 'T'))
 
@@ -108,7 +108,13 @@ def sky_error(profile, sky_adj, fit_name, store=True):
 if __name__ == '__main__':
 	direct = 'repository'
 	Gal_list, Gal_names = SD.import_directory(direct)
-	G = Gal_list[25][0][1]
+	G = Gal_list[40][0][1]
+	# pickle.dump(Gal_list, open("saved_galaxies.p", 'wb'))
+	# ax = G.preview()
+	# nans = ~np.isnan(G.M)
+	# tck = interpolate.UnivariateSpline(G.R[nans], G.M[nans], s=0.1)
+	# x2 = np.linspace(G.R[nans][0], G.R[nans][-1], 500)
+	# ax.plot(x2, tck(x2))
 
 	P = G.params
 	X = np.linspace(0,60,1000)
